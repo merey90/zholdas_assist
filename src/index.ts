@@ -47,72 +47,15 @@ async function openaiRequest(
   return response.json();
 }
 
-async function handleRequest(request: Request<unknown, CfProperties<unknown>>) {
-  if (request.method !== 'POST') {
-    return new Response('OK');
-  }
-
-  const payload = await request.json<ITelegramResponse>();
-  if (!payload?.message) {
-    return new Response('OK');
-  }
-
-  //check if message was sent from group and the bot was mentioned
-  const chatId = payload.message.chat.id;
-  const isGroupMessage = payload.message.chat.type !== 'private';
-  const isBotMentioned =
-    payload.message.entities?.length &&
-    payload.message.entities[0].type === 'mention';
-  const isBotMentionedInText = payload.message.text?.includes(
-    '@zholdas_assist_bot'
-  );
-  if (isGroupMessage && !isBotMentioned && isBotMentionedInText) {
-    return new Response('OK');
-  }
-
-  const userId = payload.message.from.id.toString();
-  if (!isUserAllowed(userId)) {
-    return telegramReply(
-      `Sorry, ${userId}, you are not allowed to use my 🤖`,
-      chatId
-    );
-  }
-
-  const userInput = payload.message.text
-    ?.replace('@zholdas_assist_bot', '')
-    .trim();
-  if (!userInput) {
-    return telegramReply("Sorry, I can't understand you 🤖", chatId);
-  }
-
-  // init history if not exists
-  if (!history[chatId] || !history[chatId][userId]) {
-    history[chatId] = {};
-    history[chatId][userId] = [];
-  }
-
-  if (userInput.length < 10 && userInput === '/clear') {
-    history[chatId][userId] = [];
-    return telegramReply('History cleared', chatId);
-  } else if (userInput.length < 10) {
-    return telegramReply(
-      'Please type at least 10 characters to get a response 🤖',
-      chatId
-    );
-  }
-
-  history[chatId][userId].push({
-    role: 'user',
-    content: userInput,
-  });
-
+async function launchOpenAI(chatId: string, userId: string) {
   try {
-    const completion = await openaiRequest(history[chatId][userId]);
+    const response = await openaiRequest(history[chatId][userId]);
 
-    const completionText = completion?.choices[0]?.message?.content;
+    const completionText = response?.choices[0]?.message?.content;
     if (!completionText) {
       throw new Error('No completion text');
     }
+
     history[chatId][userId].push({
       role: 'assistant',
       content: completionText,
@@ -124,4 +67,59 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>) {
       chatId
     );
   }
+}
+
+async function handleRequest(request: Request) {
+  if (request.method !== 'POST') {
+    return new Response('OK');
+  }
+
+  const payload: ITelegramResponse = await request.json();
+  const message = payload?.message;
+  if (!message) {
+    return new Response('OK');
+  }
+
+  // Check if message was sent from group and the bot was mentioned
+  const isGroupMessage = message.chat.type !== 'private';
+  const isBotMentioned =
+    message.entities?.[0]?.type === 'mention' &&
+    message.text?.includes('@zholdas_assist_bot');
+  if (isGroupMessage && !isBotMentioned) {
+    return new Response('OK');
+  }
+
+  const chatId = message.chat.id;
+  const userId = message.from.id.toString();
+  if (!isUserAllowed(userId)) {
+    return telegramReply(
+      `Sorry, ${userId}, you are not allowed to use my 🤖`,
+      chatId
+    );
+  }
+
+  const userInput = message.text?.replace('@zholdas_assist_bot', '').trim();
+  if (!userInput) {
+    return telegramReply("Sorry, I can't understand you 🤖", chatId);
+  }
+
+  // Init history if not exists
+  history[chatId] ||= {};
+  history[chatId][userId] ||= [];
+
+  if (userInput === '/clear') {
+    history[chatId][userId] = [];
+    return telegramReply('History cleared', chatId);
+  }
+
+  if (userInput.length < 10) {
+    return telegramReply('Please type at least 10 characters', chatId);
+  }
+
+  history[chatId][userId].push({
+    role: 'user',
+    content: userInput,
+  });
+
+  return await launchOpenAI(chatId, userId);
 }

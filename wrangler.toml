@@ -1,0 +1,8 @@
+name = "zholdas"
+main = "src/index.ts"
+compatibility_date = "2023-05-10"
+usage_model = "bundled"
+env = { }
+
+[triggers]
+crons = [ ]

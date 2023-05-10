@@ -12,11 +12,18 @@ export interface ITelegramResponse {
     chat: {
       id: string;
       first_name: string;
-      username: string;
+      title: string;
       type: string;
     };
     date: number;
     text: string;
+    entities: [
+      {
+        offset: number;
+        length: number;
+        type: string;
+      }
+    ];
   };
 }
 

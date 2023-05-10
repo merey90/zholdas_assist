@@ -13,16 +13,16 @@ addEventListener('fetch', (event) => {
   event.respondWith(handleRequest(event.request));
 });
 
-function isUserAllowed(username: string) {
+function isUserAllowed(userId: string) {
   const userList = USER_LIST.split(',');
-  return userList.includes(username);
+  return userList.includes(userId);
 }
 
 const history: IChatHistory = {};
 
 async function telegramReply(message: string, chatId: string) {
   const url = `https://api.telegram.org/bot${TELEGRAM_API_KEY}/sendMessage?chat_id=${chatId}&text=${message}`;
-  await fetch(url).then((resp) => resp.json());
+  await fetch(url);
   return new Response('OK');
 }
 
@@ -57,25 +57,42 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>) {
     return new Response('OK');
   }
 
+  //check if message was sent from group and the bot was mentioned
   const chatId = payload.message.chat.id;
-  const username = payload.message.chat.username;
-  if (!isUserAllowed(username)) {
-    return telegramReply('Sorry, you are not allowed to use my 🤖', chatId);
+  const isGroupMessage = payload.message.chat.type !== 'private';
+  const isBotMentioned =
+    payload.message.entities?.length &&
+    payload.message.entities[0].type === 'mention';
+  const isBotMentionedInText = payload.message.text?.includes(
+    '@zholdas_assist_bot'
+  );
+  if (isGroupMessage && !isBotMentioned && isBotMentionedInText) {
+    return new Response('OK');
   }
 
-  const userInput = payload.message.text?.trim();
+  const userId = payload.message.from.id.toString();
+  if (!isUserAllowed(userId)) {
+    return telegramReply(
+      `Sorry, ${userId}, you are not allowed to use my 🤖`,
+      chatId
+    );
+  }
+
+  const userInput = payload.message.text
+    ?.replace('@zholdas_assist_bot', '')
+    .trim();
   if (!userInput) {
     return telegramReply("Sorry, I can't understand you 🤖", chatId);
   }
 
   // init history if not exists
-  if (!history[chatId] || !history[chatId][username]) {
+  if (!history[chatId] || !history[chatId][userId]) {
     history[chatId] = {};
-    history[chatId][username] = [];
+    history[chatId][userId] = [];
   }
 
   if (userInput.length < 10 && userInput === '/clear') {
-    history[chatId][username] = [];
+    history[chatId][userId] = [];
     return telegramReply('History cleared', chatId);
   } else if (userInput.length < 10) {
     return telegramReply(
@@ -84,19 +101,19 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>) {
     );
   }
 
-  history[chatId][username].push({
+  history[chatId][userId].push({
     role: 'user',
     content: userInput,
   });
 
   try {
-    const completion = await openaiRequest(history[chatId][username]);
+    const completion = await openaiRequest(history[chatId][userId]);
 
     const completionText = completion?.choices[0]?.message?.content;
     if (!completionText) {
       throw new Error('No completion text');
     }
-    history[chatId][username].push({
+    history[chatId][userId].push({
       role: 'assistant',
       content: completionText,
     });

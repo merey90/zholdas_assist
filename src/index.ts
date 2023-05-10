@@ -83,7 +83,7 @@ async function handleRequest(request: Request) {
   // Check if message was sent from group and the bot was mentioned
   const isGroupMessage = message.chat.type !== 'private';
   const isBotMentioned =
-    message.entities?.[0]?.type === 'mention' &&
+    ['mention', 'bot_command'].includes(message.entities?.[0]?.type) &&
     message.text?.includes('@zholdas_assist_bot');
   if (isGroupMessage && !isBotMentioned) {
     return new Response('OK');

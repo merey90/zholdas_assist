@@ -1,6 +1,6 @@
 export interface ITelegramResponse {
   update_id: number;
-  message: {
+  message?: {
     message_id: number;
     from: {
       id: string;
@@ -18,4 +18,9 @@ export interface ITelegramResponse {
     date: number;
     text: string;
   };
+}
+
+export interface IHistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
 }

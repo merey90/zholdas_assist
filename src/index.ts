@@ -59,6 +59,7 @@ async function launchOpenAI(chatId: string, userId: string) {
     history[chatId][userId].push({
       role: 'assistant',
       content: completionText,
+      name: 'Zholdas',
     });
     return telegramReply(completionText, chatId);
   } catch (error: any) {
@@ -119,6 +120,7 @@ async function handleRequest(request: Request) {
   history[chatId][userId].push({
     role: 'user',
     content: userInput,
+    name: userId.toString(),
   });
 
   return await launchOpenAI(chatId, userId);

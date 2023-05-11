@@ -28,8 +28,9 @@ export interface ITelegramResponse {
 }
 
 export interface IHistoryItem {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  name: string;
 }
 
 export interface IUserHistory {

@@ -14,7 +14,6 @@ async function openaiRequest(
   };
   const body = {
     model: 'gpt-3.5-turbo',
-    max_tokens: 1000, // TODO: accept more than 1000 characters and split into multiple resonses
     messages,
   };
   const response = await fetch(url, {

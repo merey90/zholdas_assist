@@ -1,9 +1,9 @@
 import { deleteUserMessages, fetchUserMessages, addMessage } from './db';
-import { IHistoryItem, IOpenAIResponse, ITelegramResponse } from './types';
+import { launchOpenAI } from './openai';
+import { telegramReply } from './telegram';
+import { ITelegramResponse } from './types';
 
-declare const TELEGRAM_API_KEY: string;
 declare const USER_LIST: string;
-declare const CHAT_API_KEY: string;
 
 addEventListener('fetch', (event) => {
   event.respondWith(handleRequest(event.request));
@@ -12,69 +12,6 @@ addEventListener('fetch', (event) => {
 function isUserAllowed(userId: string) {
   const userList = USER_LIST.split(',');
   return userList.includes(userId);
-}
-
-async function telegramReply(message: string, chatId: string) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_API_KEY}/sendMessage?chat_id=${chatId}&text=${message}`;
-  await fetch(url);
-  return new Response('OK');
-}
-
-async function openaiRequest(
-  messages: IHistoryItem[]
-): Promise<IOpenAIResponse> {
-  const url = `https://api.openai.com/v1/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${CHAT_API_KEY}`,
-  };
-  const body = {
-    model: 'gpt-3.5-turbo',
-    max_tokens: 1000, // TODO: accept more than 1000 characters and split into multiple resonses
-    messages,
-  };
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  return response.json();
-}
-
-async function launchOpenAI(chatId: string, userId: string) {
-  try {
-    const messages = (await fetchUserMessages(userId, chatId)) || [];
-    if (messages.length === 0) {
-      return telegramReply(
-        'Sorry, I can not help you with that 🤖. Please try again',
-        chatId
-      );
-    }
-    const pureMessages = messages.map(({ role, content, name }) => ({
-      role,
-      content,
-      name,
-    }));
-    const response = await openaiRequest(pureMessages);
-
-    const completionText = response?.choices?.[0]?.message?.content;
-    if (!completionText) {
-      throw new Error('No completion text');
-    }
-
-    addMessage(userId, chatId, {
-      role: 'assistant',
-      content: completionText,
-      name: 'Zholdas',
-    });
-
-    return telegramReply(completionText, chatId);
-  } catch (error: any) {
-    return telegramReply(
-      'No response from openAI 🤖 ' + error.toString(),
-      chatId
-    );
-  }
 }
 
 async function handleRequest(request: Request) {

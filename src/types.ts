@@ -33,12 +33,9 @@ export interface IHistoryItem {
   name: string;
 }
 
-export interface IUserHistory {
-  [key: string]: IHistoryItem[];
-}
-
-export interface IChatHistory {
-  [key: string]: IUserHistory;
+export interface IMongoMessage extends IHistoryItem {
+  userId: string;
+  chatId: string;
 }
 
 export interface IOpenAIResponse {

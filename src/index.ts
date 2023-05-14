@@ -1,9 +1,5 @@
-import {
-  IChatHistory,
-  IHistoryItem,
-  IOpenAIResponse,
-  ITelegramResponse,
-} from './types';
+import { deleteUserMessages, fetchUserMessages, addMessage } from './db';
+import { IHistoryItem, IOpenAIResponse, ITelegramResponse } from './types';
 
 declare const TELEGRAM_API_KEY: string;
 declare const USER_LIST: string;
@@ -17,8 +13,6 @@ function isUserAllowed(userId: string) {
   const userList = USER_LIST.split(',');
   return userList.includes(userId);
 }
-
-const history: IChatHistory = {};
 
 async function telegramReply(message: string, chatId: string) {
   const url = `https://api.telegram.org/bot${TELEGRAM_API_KEY}/sendMessage?chat_id=${chatId}&text=${message}`;
@@ -49,18 +43,31 @@ async function openaiRequest(
 
 async function launchOpenAI(chatId: string, userId: string) {
   try {
-    const response = await openaiRequest(history[chatId][userId]);
+    const messages = (await fetchUserMessages(userId, chatId)) || [];
+    if (messages.length === 0) {
+      return telegramReply(
+        'Sorry, I can not help you with that 🤖. Please try again',
+        chatId
+      );
+    }
+    const pureMessages = messages.map(({ role, content, name }) => ({
+      role,
+      content,
+      name,
+    }));
+    const response = await openaiRequest(pureMessages);
 
-    const completionText = response?.choices[0]?.message?.content;
+    const completionText = response?.choices?.[0]?.message?.content;
     if (!completionText) {
       throw new Error('No completion text');
     }
 
-    history[chatId][userId].push({
+    addMessage(userId, chatId, {
       role: 'assistant',
       content: completionText,
       name: 'Zholdas',
     });
+
     return telegramReply(completionText, chatId);
   } catch (error: any) {
     return telegramReply(
@@ -90,7 +97,7 @@ async function handleRequest(request: Request) {
     return new Response('OK');
   }
 
-  const chatId = message.chat.id;
+  const chatId = message.chat.id.toString();
   const userId = message.from.id.toString();
   if (!isUserAllowed(userId)) {
     return telegramReply(
@@ -104,24 +111,37 @@ async function handleRequest(request: Request) {
     return telegramReply("Sorry, I can't understand you 🤖", chatId);
   }
 
-  // Init history if not exists
-  history[chatId] ||= {};
-  history[chatId][userId] ||= [];
+  if (userInput === '/history') {
+    try {
+      const messages = await fetchUserMessages(userId, chatId);
+      return telegramReply(JSON.stringify(messages), chatId);
+    } catch (error) {
+      return telegramReply(JSON.stringify(error), chatId);
+    }
+  }
 
   if (userInput === '/clear') {
-    history[chatId][userId] = [];
-    return telegramReply('History cleared', chatId);
+    try {
+      await deleteUserMessages(userId, chatId);
+      return telegramReply('History cleared', chatId);
+    } catch (error) {
+      return telegramReply(JSON.stringify(error), chatId);
+    }
   }
 
   if (userInput.length < 10) {
     return telegramReply('Please type at least 10 characters', chatId);
   }
 
-  history[chatId][userId].push({
-    role: 'user',
-    content: userInput,
-    name: userId.toString(),
-  });
+  try {
+    await addMessage(userId, chatId, {
+      role: 'user',
+      content: userInput,
+      name: userId.toString(),
+    });
+  } catch (error) {
+    return telegramReply(JSON.stringify(error), chatId);
+  }
 
   return await launchOpenAI(chatId, userId);
 }
